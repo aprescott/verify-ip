@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# invalid fake googlebot
+output=$(echo '127.0.0.1 - - [11/Feb/2013:04:15:42 +0000] "GET / HTTP/1.1" 200 3527 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"' |
+	./verify-ip --domain "googlebot\.com")
+
+if [ ! -z "$output" ]; then
+	echo "Valid Googlebot + --domain failed"
+	exit 1
+fi
+
+# valid googlebot + --domain
+output=$(echo '66.249.75.91 - - [11/Feb/2013:04:15:42 +0000] "GET / HTTP/1.1" 200 3527 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"' |
+	./verify-ip --domain "googlebot\.com")
+
+if [ -z "$output" ]; then
+	echo "Valid Googlebot + --domain failed"
+	exit 1
+fi
+
+# valid googlebot + --google
+output=$(echo '66.249.75.91 - - [11/Feb/2013:04:15:42 +0000] "GET / HTTP/1.1" 200 3527 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"' |
+	./verify-ip --google)
+
+if [ -z "$output" ]; then
+	echo "Valid Googlebot + --google failed"
+	exit 1
+fi
+
+# feed fetcher
+output=$(echo '72.14.199.98 - - [10/Feb/2013:21:41:09 +0000] "GET /feed HTTP/1.1" 304 0 "-" "Feedfetcher-Google; (+http://www.google.com/feedfetcher.html; 6 subscribers; feed-id=123456)"' |
+  ./verify-ip --domain 'google\.com')
+
+if [ -z "$output" ]; then
+	echo "Feed reader check failed."
+	exit 1
+fi

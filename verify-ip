@@ -1,0 +1,197 @@
+#!/bin/bash
+#
+# verify-ip, version 0.1
+#
+# Given access log request lines on STDIN, returns only those from an IP that
+# reverse-lookups to a domain matching the one specified.
+#
+# An example use case is filtering out web server access log lines that come
+# only from valid Google bot requests, to avoid a spoofed user agent string.
+#
+# See -h for help.
+#
+# Project homepage: https://github.com/aprescott/verify-ip
+
+#
+# Copyright (c) 2013, Adam Prescott <https://aprescott.com/>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+function print_help {
+  cat <<END_USAGE
+Synopsis:
+
+    verify-ip --domain[-pattern] REGEX_PATTERN
+              [--google]
+              [-h | --help]
+
+Options:
+
+    -h, --help
+
+      Print the help page and exit.
+
+    --domain[-pattern] REGEX_PATTERN
+
+        When the IP specified by --ip is put through a reverse look-up,
+        only treat it as a "valid" IP if the domain found matches
+        REGEX_PATTERN. Note that REGEX_PATTERN will be used as,
+
+            (^|\.?)${REGEX_PATTERN}\.$
+
+        to ensure a fully-qualified domain so that, e.g.,
+        "googlebot.com.fakedomain.com." does not match "googlebot\.com",
+        and "myfakegooglebot.com." does not match "googlebot\.com\.$".
+
+    --google
+
+        Optional.
+
+        Pre-filters lines that match only known Google web crawler user
+        agent string fragments, such as "Mediapartners-Google" and Assumes
+        --domain is passed with "googlebot\.com".
+
+        Assumes that the user agent strings do not contain any "
+        characters and appear at the end of the line, as with
+        the combined log format.
+
+Notes:
+
+    All lines are assumed to contain an IP address as the first space-
+    delimited token.
+
+Examples:
+
+    Simple usage:
+  
+        cat access.log | verify-ip --domain "foo\.com"
+
+    Filter Google web crawler requests by UA + IP:
+
+        cat access.log | verify-ip --google
+
+    Filter valid Google requests only for AdsBot-Google
+    requests, based on a UA string from a combined logging
+    format:
+
+        cat access.log | grep -E 'AdsBot-Google[^"]+"$' |
+          verify-ip --domain 'googlebot\.com'
+
+    Filter only Google Reader requests that come from Feedfetcher,
+    which comes from the "google.com" domain, as per
+    http://support.google.com/webmasters/bin/answer.py?hl=en&answer=182072 :
+
+        cat access.log | grep -E 'Feedfetcher-Google' |
+          verify-ip --domain "google\.com"
+
+END_USAGE
+}
+
+google=false
+
+while [ ! -z "$1" ]; do
+  case "$1" in
+    -h | --help)
+      print_help
+      exit 0
+      ;;
+    --domain | --domain-pattern)
+      shift
+      domain_pattern="$1"
+      shift
+      ;;
+
+    --google)
+      google=true
+      domain_pattern="googlebot\.com"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$domain_pattern" ]; then
+  echo "No domain pattern given, e.g.: --domain-pattern 'foo\.com'"
+  exit 1
+fi
+
+seconds=$(date +"%s")
+
+access_lines_file="/tmp/.verify-ip.user-agent-access-lines-${seconds}"
+
+# take an IP address and verifies if it reverse-lookups to a domain matching
+# the domain pattern.
+function ip_comes_from_domain {
+  local ip="$1"
+
+  domain=$(host $ip | awk -F' ' '{ print $NF }')
+  ipfromdomain=$(host "$domain" | awk -F' ' '{ print $NF }')
+
+  # check if the domain name is valid.
+  #
+  # note the anchor to avoid someone faking it with a subdomain like
+  # googlebot.com.fakedomain.net.
+  grep -q -E "(^|\.?)${domain_pattern}"'\.$' <<<"$domain"
+}
+
+cat |
+  (
+    if $google; then
+      # filter only the lines that have proper UA strings, which might contain false
+      # positives.
+      #
+      # this is based on a list provided by Google:
+      #
+      #   http://support.google.com/webmasters/bin/answer.py?hl=en&answer=1061943
+      #
+      grep -E '"[^"]+(Googlebot(-News|Image|Video|Mobile)?|Mediapartners-Google|AdsBot-Google)[^"]+"$'
+    else
+      cat
+    fi
+  ) |
+  # store the entire matched line in a file for later use, so we only need
+  # the whole input once if we've done other filtering
+  tee "$access_lines_file" |
+  # grab the IP
+  cut -d ' ' -f 1 |
+  # cut out any duplicates
+  sort -u |
+  # verify the address as a Google one
+  while read ip; do
+    if ip_comes_from_domain "$ip"; then
+      echo "$ip"
+    fi
+  done |
+
+  # take the list of unique IPs and turn them into a pattern that we can use.
+  # the list of IPs like
+  #
+  #     a.b.c.d
+  #
+  # turns into a list of IPs like
+  #
+  #     ^a\.b\.c\.d\b
+  #
+  # making sure that there are no blank lines, since a blank line passed to
+  # grep -f will allow any string to match
+
+  sed -e 's/^/^/g' \
+      -e 's/$/\\b/g' \
+      -e 's/\./\\./g' \
+      -e '/^\s*$/d' |
+  grep -f - "$access_lines_file"
