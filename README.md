@@ -10,6 +10,12 @@ cat access.log |
   verify-ip --domain 'google\.com'
 ```
 
+Comes with a convenience method for filtering out all Google _web crawler_ (does not include Feedfetcher) requests:
+
+```bash
+verify-ip --google
+```
+
 # License and contributing
 
 Copyright (c) 2013 Adam Prescott <https://aprescott.com/>.
