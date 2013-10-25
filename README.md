@@ -22,8 +22,6 @@ Copyright (c) 2013 Adam Prescott <https://aprescott.com/>.
 
 verify-ip is released under the MIT license. See LICENSE for details.
 
-Any contributions will be assumed by default to be under the same terms.
-
 The quickest way to get changes contributed:
 
 1. Visit the [GitHub repository](https://github.com/aprescott/verify-ip).
