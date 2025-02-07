@@ -18,7 +18,7 @@ verify-ip --google
 
 # License and contributing
 
-Copyright (c) 2013 Adam Prescott <https://aprescott.com/>.
+Copyright (c) 2013 aprescott.
 
 verify-ip is released under the MIT license. See LICENSE for details.
 
